@@ -52,6 +52,9 @@ from src.env.reward import Reward
 import src.env.observation_action_space
 from src.env.pre_processing import PreProcessing
 
+from agents.navigation.global_route_planner import GlobalRoutePlanner
+from agents.navigation.controller import VehiclePIDController
+
 # Name: 'carla-rl-gym-v0'
 class CarlaEnv(gym.Env):
     metadata = {"render_modes": ["human"], "render_fps": config.SIM_FPS}
@@ -113,6 +116,8 @@ class CarlaEnv(gym.Env):
         self.__first_episode = True
         self.__episode_number = 0
         self.__restart_every = 1000 # Reload every n episodes so it doesn't crash
+
+
         
     # ===================================================== GYM METHODS =====================================================                
     # This reset loads a random scenario and returns the initial state plus information about the scenario
@@ -136,7 +141,7 @@ class CarlaEnv(gym.Env):
         
         # 3. Place the spectator
         self.place_spectator_above_vehicle()
-        
+
         if self.__autopilot:
             self.__vehicle.set_autopilot(True)
         
@@ -175,48 +180,48 @@ class CarlaEnv(gym.Env):
             self.display.play_window_tick()
         else:
             raise NotImplementedError("This mode is not implemented yet")
-
-    def step(self, action):
-        # 0. Tick the world if in synchronous mode
-        if self.__synchronous_mode:
-            try:
-                self.__world.tick()
-            except KeyboardInterrupt:
-                self.clean_scenario()
-                print("Episode interrupted!")
-                exit(0)
-        self.number_of_steps += 1
-        # 1. Control the vehicle
-        self.__control_vehicle(np.array(action))
-        # 1.5 Tick the display if it is active
-        if self.__show_sensor_data:
-            self.display.play_window_tick()
-        # 2. Update the observation
-        self.__update_observation()
-        # 3. Calculate the reward
-        reward = self.__reward_func.calculate_reward(self.__vehicle, self.__reward_current_pos, self.__reward_target_pos, self.__reward_next_waypoint_pos, self.__reward_speed)
-        terminated = self.__reward_func.get_terminated()
-        self.__waypoints = self.__reward_func.get_waypoints()
+            
+    # def step(self, action):
+    #     # 0. Tick the world if in synchronous mode
+    #     if self.__synchronous_mode:
+    #         try:
+    #             self.__world.tick()
+    #         except KeyboardInterrupt:
+    #             self.clean_scenario()
+    #             print("Episode interrupted!")
+    #             exit(0)
+    #     self.number_of_steps += 1
+    #     # 1. Control the vehicle
+    #     self.__control_vehicle(np.array(action))
+    #     # 1.5 Tick the display if it is active
+    #     if self.__show_sensor_data:
+    #         self.display.play_window_tick()
+    #     # 2. Update the observation
+    #     self.__update_observation()
+    #     # 3. Calculate the reward
+    #     reward = self.__reward_func.calculate_reward(self.__vehicle, self.__reward_current_pos, self.__reward_target_pos, self.__reward_next_waypoint_pos, self.__reward_speed)
+    #     terminated = self.__reward_func.get_terminated()
+    #     self.__waypoints = self.__reward_func.get_waypoints()
         
-        # 5. Check if the episode is truncated
-        try:
-            self.__truncated = self.__timer_truncated()
-        except KeyboardInterrupt:
-            self.clean_scenario()
-            print("Episode interrupted!")
-            exit(0)
-        if self.__truncated or terminated:
-            print(f"Episode ended with reward {self.__reward_func.get_total_ep_reward()}.")
-            self.clean_scenario()
-            print("------------------------------------------------------")
+    #     # 5. Check if the episode is truncated
+    #     try:
+    #         self.__truncated = self.__timer_truncated()
+    #     except KeyboardInterrupt:
+    #         self.clean_scenario()
+    #         print("Episode interrupted!")
+    #         exit(0)
+    #     if self.__truncated or terminated:
+    #         print(f"Episode ended with reward {self.__reward_func.get_total_ep_reward()}.")
+    #         self.clean_scenario()
+    #         print("------------------------------------------------------")
         
-        # 6. Make information about the scenario available
-        info = {
-            'scenario_name': self.__active_scenario_name,
-            'waypoints': self.__waypoints,
-        }
+    #     # 6. Make information about the scenario available
+    #     info = {
+    #         'scenario_name': self.__active_scenario_name,
+    #         'waypoints': self.__waypoints,
+    #     }
         
-        return self.__observation, reward, terminated, self.__truncated, info
+    #     return self.__observation, reward, terminated, self.__truncated, info
 
     # Closes everything, more precisely, destroys the vehicle, along with its sensors, destroys every npc and then destroys the world
     def close(self):
@@ -271,6 +276,7 @@ class CarlaEnv(gym.Env):
         self.__reward_current_pos = current_position
         self.__reward_next_waypoint_pos = next_waypoint_position
         self.__reward_speed = speed[0]
+        self.sample_resolution = 0.5
 
 
     # ===================================================== SCENARIO METHODS =====================================================
@@ -484,3 +490,117 @@ class CarlaEnv(gym.Env):
             self.__world.get_world().debug.draw_string(w, 'O', draw_shadow=False,
                                                     color=carla.Color(r=255, g=0, b=0), life_time=life_time,
                                                     persistent_lines=True)
+            
+    def step(self, action, action_duration=1.0):
+        """
+            action in :
+                - 'Constant speed'
+                - 'Speed up'
+                - 'Speed down'
+                - 'Turn left'
+                - 'Turn right'
+                - 'Emergency brake'
+        """
+        behavior_target_point = self.__calc_action_target_point(action, action_duration)
+        num_duration_steps = int(action_duration * config.SIM_FPS)
+        controller = self.__init_PID_controllers()
+        target_speed = 30
+
+        local_route = self.__get_local_route(behavior_target_point)
+        current_waypoint_index = 0
+        
+        for _ in range(num_duration_steps):
+            current_waypoint, _ = local_route[current_waypoint_index]
+            control = controller.run_step(target_speed, current_waypoint)
+            self.__step_single_frame(control)
+            if current_waypoint.transform.location.distance(self.__vehicle.get_location()) < self.sample_resolution:
+                current_waypoint_index += 1
+        
+        reward = self.__reward_func.calculate_reward(self.__vehicle, self.__reward_current_pos, self.__reward_target_pos, self.__reward_next_waypoint_pos, self.__reward_speed)
+        terminated = self.__reward_func.get_terminated()
+        self.__waypoints = self.__reward_func.get_waypoints()
+        
+        try:
+            self.__truncated = self.__timer_truncated()
+        except KeyboardInterrupt:
+            self.clean_scenario()
+            print("Episode interrupted!")
+            exit(0)
+        if self.__truncated or terminated:
+            print(f"Episode ended with reward {self.__reward_func.get_total_ep_reward()}.")
+            self.clean_scenario()
+            print("------------------------------------------------------")
+
+        info = {
+            'scenario_name': self.__active_scenario_name,
+            'waypoints': self.__waypoints,
+        }
+        
+        return self.__observation, reward, terminated, self.__truncated, info
+
+    def __init_PID_controllers(self):
+        args_lateral_dict = {
+            'K_P': 1.0,
+            'K_I': 0.0,
+            'K_D': 0.0,
+            'dt': 0.03
+        }
+        args_longitudinal_dict = {
+            'K_P': 1.0,
+            'K_I': 0.0,
+            'K_D': 0.0,
+            'dt': 0.03
+        }
+        
+        controller = VehiclePIDController(
+            self.__vehicle.get_vehicle(),
+            args_lateral=args_lateral_dict,
+            args_longitudinal=args_longitudinal_dict
+        )
+        return controller
+
+    def __get_local_route(self, target_point):
+        
+        grp =GlobalRoutePlanner(self.__map, self.sample_resolution)
+        start_location = self.__vehicle.get_location()
+        route = grp.trace_route(start_location, target_point)
+        return route
+
+    def __step_single_frame(self, action):
+        if self.__synchronous_mode:
+            try:
+                self.__world.tick()
+            except KeyboardInterrupt:
+                self.clean_scenario()
+                print("Episode interrupted!")
+                exit(0)
+        self.number_of_steps += 1
+        self.__vehicle.get_vehicle().apply_control(action)
+        if self.__show_sensor_data:
+            self.display.play_window_tick()
+        self.__update_observation()
+
+
+    def __calc_action_target_point(self, action, action_duration):
+        speed = self.__vehicle.get_speed() / 3.6 + 5
+        # make sure the target point is in front of the vehicle could arrive
+        transform = self.__vehicle.get_vehicle().get_transform()
+        location = transform.location
+        forward_vector = transform.get_forward_vector()
+
+        if action == 'Constant speed':
+            target_point = location + forward_vector * speed * action_duration
+        elif action == 'Speed up':
+            target_point = location + forward_vector * (speed + 5.0) * action_duration
+        elif action == 'Speed down':
+            target_point = location + forward_vector * (speed - 5.0) * action_duration
+        elif action == 'Turn left':
+            new_forward_vector = forward_vector.rotate(transform.rotation, carla.Vector3D(0, 0, 1)) * action_duration
+            target_point = location + new_forward_vector * speed
+        elif action == 'Turn right':
+            new_forward_vector = forward_vector.rotate(transform.rotation, carla.Vector3D(0, 0, -1)) * action_duration
+            target_point = location + new_forward_vector * speed
+        elif action == 'Emergency brake':
+            target_point = location
+
+        return target_point

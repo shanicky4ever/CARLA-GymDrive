@@ -28,7 +28,7 @@ def episodes_main():
         print("================================ Episode", i, " ================================")
         obs, info = env.reset(options={'scenario_name': None})
         while True:
-            action = [0.0, 10.0]
+            action = 'Constant speed'
             obs, reward, terminated, truncated, info = env.step(action)
             # print("Reward:", reward, "Terminated:", terminated, "Truncated:", truncated)
             
