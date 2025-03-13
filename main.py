@@ -21,14 +21,14 @@ def steps_main():
     env.close()
 
 def episodes_main():
-    env = gym.make('carla-rl-gym-v0', time_limit=15, initialize_server=False, random_weather=False, synchronous_mode=True, continuous=True, show_sensor_data=True, random_traffic=False, autopilot=False)
+    env = gym.make('carla-rl-gym-v0', time_limit=15, initialize_server=True, random_weather=False, synchronous_mode=True, continuous=True, show_sensor_data=True, random_traffic=False, autopilot=False)
 
     # Number of episodes
     for i in range(5):
         print("================================ Episode", i, " ================================")
-        obs, info = env.reset()
+        obs, info = env.reset(options={'scenario_name': None})
         while True:
-            action = [0.0, 0.0]
+            action = [0.0, 10.0]
             obs, reward, terminated, truncated, info = env.step(action)
             # print("Reward:", reward, "Terminated:", terminated, "Truncated:", truncated)
             
