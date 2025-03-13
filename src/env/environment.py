@@ -504,7 +504,14 @@ class CarlaEnv(gym.Env):
         behavior_target_point = self.__calc_action_target_point(action, action_duration)
         num_duration_steps = int(action_duration * config.SIM_FPS)
         controller = self.__init_PID_controllers()
-        target_speed = 30
+        speed = self.__vehicle.get_speed() / 3.6
+        target_speed = speed
+        if action != 'Emergency brake' and target_speed == 0:
+            target_speed = 20
+        if action == 'speed up':
+            target_speed += 5.0
+        elif action == 'speed down':
+            target_speed -= 5.0
 
         local_route = self.__get_local_route(behavior_target_point)
         current_waypoint_index = 0
