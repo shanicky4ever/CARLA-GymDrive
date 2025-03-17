@@ -276,7 +276,7 @@ class CarlaEnv(gym.Env):
         self.__reward_current_pos = current_position
         self.__reward_next_waypoint_pos = next_waypoint_position
         self.__reward_speed = speed[0]
-        self.sample_resolution = 1.0
+        self.sample_resolution = 2.0
 
 
     # ===================================================== SCENARIO METHODS =====================================================
@@ -501,19 +501,21 @@ class CarlaEnv(gym.Env):
                 - 'Turn left'
                 - 'Turn right'
                 - 'Emergency brake'
+                - 'lane_change_left'
+                - 'lane_change_right'
         """
         behavior_target_point = self.__calc_action_target_point(action, action_duration)
         num_duration_steps = int(action_duration * config.SIM_FPS)
         controller = self.__init_PID_controllers()
         speed = self.__vehicle.get_speed() / 3.6
         target_speed = speed
-        # if action != 'Emergency brake' and target_speed == 0:
-        #     target_speed = 20
-        # if action == 'speed up':
-        #     target_speed += 5.0
-        # elif action == 'speed down':
-        #     target_speed -= 5.0
-        target_speed = 30
+        if action != 'Emergency brake' and speed < 5.0:
+            target_speed = 20
+        if action == 'speed up':
+            target_speed += 5.0
+        elif action == 'speed down':
+            target_speed -= 5.0
+        # target_speed = 30
 
         local_route = self.__get_local_route(behavior_target_point)
         current_waypoint_index = 0
@@ -591,7 +593,7 @@ class CarlaEnv(gym.Env):
 
 
     def __calc_action_target_point(self, action, action_duration):
-        speed = self.__vehicle.get_speed() / 3.6 + 5
+        speed = self.__vehicle.get_speed() / 3.6 + 10
         # make sure the target point is in front of the vehicle could arrive
         transform = self.__vehicle.get_vehicle().get_transform()
         location = transform.location
@@ -611,5 +613,26 @@ class CarlaEnv(gym.Env):
             target_point = location + new_forward_vector * speed
         elif action == 'Emergency brake':
             target_point = location
+        elif action in ('lane_change_left', 'lane_change_right'):
+            forward_point = location + forward_vector * speed * action_duration
+            target_point = self.__get_lane_change_target(action, forward_point)
 
         return target_point
+
+    def __get_lane_change_target(self, direction, forward_point):
+        forward_waypoint = self.__map.get_waypoint(forward_point)
+        if direction == 'lane_change_left':
+            left_wp = forward_waypoint.get_left_lane()
+            if left_wp and left_wp.lane_type == carla.LaneType.Driving and self.__is_same_direction(forward_waypoint, left_wp):
+                return left_wp.transform.location
+        elif direction == 'lane_change_right':
+            right_wp = forward_waypoint.get_right_lane()
+            if right_wp and right_wp.lane_type == carla.LaneType.Driving and self.__is_same_direction(forward_waypoint, right_wp):
+                return right_wp.transform.location
+        return forward_point
+
+    def __is_same_direction(self, forward_waypoint, target_waypoint):
+        forward_vector = forward_waypoint.transform.get_forward_vector()
+        target_vector = target_waypoint.transform.get_forward_vector()
+        dot_product = forward_vector.x * target_vector.x + forward_vector.y * target_vector.y
+        return dot_product > 0.0

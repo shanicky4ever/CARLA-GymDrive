@@ -61,7 +61,8 @@ class Reward:
         lambda = 20
         '''
         lbd = 20
-        if vehicle.collision_occurred() or vehicle.lane_invasion_occurred():
+        # if vehicle.collision_occurred() or vehicle.lane_invasion_occurred():
+        if vehicle.collision_occurred():
             self.terminated = True
             return -lbd
         else:
