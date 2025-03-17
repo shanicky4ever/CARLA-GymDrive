@@ -432,7 +432,7 @@ class CarlaEnv(gym.Env):
             self.situations_dict = {key: value for key, value in self.situations_dict.items() if value['situation'] in scenarios}
 
         self.situations_list = list(self.situations_dict.keys())
-        
+        self.situations_list = [sc for sc in self.situations_list if sc.startswith(config.SITUATION_PREFIX)]
 
             
     # ===================================================== AUX METHODS =====================================================
