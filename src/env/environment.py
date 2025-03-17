@@ -276,7 +276,7 @@ class CarlaEnv(gym.Env):
         self.__reward_current_pos = current_position
         self.__reward_next_waypoint_pos = next_waypoint_position
         self.__reward_speed = speed[0]
-        self.sample_resolution = 0.5
+        self.sample_resolution = 1.0
 
 
     # ===================================================== SCENARIO METHODS =====================================================
@@ -432,6 +432,7 @@ class CarlaEnv(gym.Env):
             self.situations_dict = {key: value for key, value in self.situations_dict.items() if value['situation'] in scenarios}
 
         self.situations_list = list(self.situations_dict.keys())
+        
 
             
     # ===================================================== AUX METHODS =====================================================
@@ -506,12 +507,13 @@ class CarlaEnv(gym.Env):
         controller = self.__init_PID_controllers()
         speed = self.__vehicle.get_speed() / 3.6
         target_speed = speed
-        if action != 'Emergency brake' and target_speed == 0:
-            target_speed = 20
-        if action == 'speed up':
-            target_speed += 5.0
-        elif action == 'speed down':
-            target_speed -= 5.0
+        # if action != 'Emergency brake' and target_speed == 0:
+        #     target_speed = 20
+        # if action == 'speed up':
+        #     target_speed += 5.0
+        # elif action == 'speed down':
+        #     target_speed -= 5.0
+        target_speed = 30
 
         local_route = self.__get_local_route(behavior_target_point)
         current_waypoint_index = 0
