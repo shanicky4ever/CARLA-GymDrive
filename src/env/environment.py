@@ -495,12 +495,12 @@ class CarlaEnv(gym.Env):
     def step(self, action, action_duration=1.0):
         """
             action in :
-                - 'Constant speed'
-                - 'Speed up'
-                - 'Speed down'
-                - 'Turn left'
-                - 'Turn right'
-                - 'Emergency brake'
+                - 'constant_speed'
+                - 'speed_up'
+                - 'speed_down'
+                - 'turn_left'
+                - 'turn_right'
+                - 'emergency_brake'
                 - 'lane_change_left'
                 - 'lane_change_right'
         """
@@ -509,11 +509,11 @@ class CarlaEnv(gym.Env):
         controller = self.__init_PID_controllers()
         speed = self.__vehicle.get_speed() / 3.6
         target_speed = speed
-        if action != 'Emergency brake' and speed < 5.0:
+        if action != 'emergency_brake' and speed < 5.0:
             target_speed = 20
-        if action == 'speed up':
+        if action == 'speed_up':
             target_speed += 5.0
-        elif action == 'speed down':
+        elif action == 'speed_down':
             target_speed -= 5.0
         # target_speed = 30
 
@@ -599,19 +599,19 @@ class CarlaEnv(gym.Env):
         location = transform.location
         forward_vector = transform.get_forward_vector()
 
-        if action == 'Constant speed':
+        if action == 'constant_speed':
             target_point = location + forward_vector * speed * action_duration
-        elif action == 'Speed up':
+        elif action == 'speed_up':
             target_point = location + forward_vector * (speed + 5.0) * action_duration
-        elif action == 'Speed down':
+        elif action == 'speed_down':
             target_point = location + forward_vector * (speed - 5.0) * action_duration
-        elif action == 'Turn left':
+        elif action == 'turn_left':
             new_forward_vector = forward_vector.rotate(transform.rotation, carla.Vector3D(0, 0, 1)) * action_duration
             target_point = location + new_forward_vector * speed
-        elif action == 'Turn right':
+        elif action == 'turn_right':
             new_forward_vector = forward_vector.rotate(transform.rotation, carla.Vector3D(0, 0, -1)) * action_duration
             target_point = location + new_forward_vector * speed
-        elif action == 'Emergency brake':
+        elif action == 'emergency_brake':
             target_point = location
         elif action in ('lane_change_left', 'lane_change_right'):
             forward_point = location + forward_vector * speed * action_duration
